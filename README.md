@@ -84,9 +84,9 @@ kubectl apply -f infra/k8s/
 O pipeline em `.github/workflows/deploy.yml`:
 
 - **Push/PR na `main`:** testes e lint em `order-service` e `inventory-service`.
-- **Push na `main`:** build das imagens Docker, push para GHCR e deploy no EKS (`kubectl set image` + `rollout status`).
+- **Push na `main`:** build das imagens Docker (via `Dockerfile.prod` de cada serviço) e push para o GHCR (GitHub Container Registry). O **deploy no EKS é opcional**: só roda se você configurar no repositório a variável `ENABLE_EKS_DEPLOY = true` e os secrets `AWS_ACCESS_KEY_ID` e `AWS_SECRET_ACCESS_KEY` (Settings → Secrets and variables → Actions). Sem isso, o pipeline passa em verde e apenas as etapas de test e build/push rodam.
 
-Configurar no repositório os secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`. O `GITHUB_TOKEN` já é fornecido pelo GitHub para push em GHCR.
+O `GITHUB_TOKEN` já é fornecido pelo GitHub para push em GHCR.
 
 ## Observabilidade
 

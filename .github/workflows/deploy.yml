@@ -116,7 +116,8 @@ jobs:
 
   deploy:
     needs: [build-order, build-inventory]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Pule o deploy se não tiver AWS configurado. Para ativar: Settings → Secrets (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY) e criar variável ENABLE_EKS_DEPLOY = true
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ENABLE_EKS_DEPLOY == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
