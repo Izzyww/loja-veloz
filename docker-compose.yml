@@ -1,0 +1,110 @@
+networks:
+  veloz-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
+
+services:
+  # --- Backing Services ---
+  postgres:
+    image: postgres:14-alpine
+    container_name: veloz-postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: veloz_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    networks:
+      - veloz-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d veloz_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.9-management-alpine
+    container_name: veloz-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: user
+      RABBITMQ_DEFAULT_PASS: password
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - veloz-net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Microsserviços: depends_on com condition evita subir antes do postgres/rabbitmq (evita erro de conexão)
+  order-service:
+    build:
+      context: ./order-service
+      dockerfile: Dockerfile.dev
+    container_name: order-service
+    ports:
+      - "3001:3000"
+    environment:
+      - PORT=3000
+      - DATABASE_URL=postgresql://admin:password123@postgres:5432/veloz_db
+      - RABBITMQ_URL=amqp://user:password@rabbitmq:5672
+      - OTEL_SERVICE_NAME=order-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - veloz-net
+    volumes:
+      - ./order-service:/app
+      - /app/node_modules
+
+  inventory-service:
+    build:
+      context: ./inventory-service
+      dockerfile: Dockerfile.dev
+    container_name: inventory-service
+    ports:
+      - "3002:3000"
+    environment:
+      - PORT=3000
+      - DATABASE_URL=postgresql://admin:password123@postgres:5432/veloz_db
+      - RABBITMQ_URL=amqp://user:password@rabbitmq:5672
+      - OTEL_SERVICE_NAME=inventory-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - veloz-net
+    volumes:
+      - ./inventory-service:/app
+      - /app/node_modules
+
+  # --- API Gateway (Nginx Local) ---
+  api-gateway:
+    image: nginx:alpine
+    container_name: api-gateway
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./gateway-www:/usr/share/nginx/html:ro
+    depends_on:
+      - order-service
+      - inventory-service
+    networks:
+      - veloz-net
